@@ -18,11 +18,14 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "net/net.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "qemu/timer.h"
+#include "qemu/cutils.h"
+#include "qemu/log.h"
 
 #include "hw/nvram/eeprom93xx.h"
 #include "tulip.h"
@@ -488,7 +491,7 @@ int tulip_init(DeviceState *dev, TulipState *s, NetClientInfo *info)
 
     s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, tulip_timer, s);
     timer_mod(s->timer,
-              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + get_ticks_per_sec());
+              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + NANOSECONDS_PER_SECOND);
 
     return 0;
 }
@@ -552,6 +555,6 @@ void tulip_timer(void *opaque)
     tulip_update_irq(s);
 
     timer_mod(s->timer,
-        qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + get_ticks_per_sec() / 10);
+        qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + NANOSECONDS_PER_SECOND / 10);
 }
 

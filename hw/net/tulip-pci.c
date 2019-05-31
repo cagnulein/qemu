@@ -18,6 +18,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/qdev.h"
 #include "hw/pci/pci.h"
@@ -25,6 +26,8 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "qemu/timer.h"
+#include "qemu/cutils.h"
+#include "qemu/log.h"
 
 #include "hw/nvram/eeprom93xx.h"
 #include "tulip.h"
@@ -93,8 +96,8 @@ static void pci_tulip_uninit(PCIDevice *dev)
     PCITulipState *d = PCI_TULIP(dev);
 
     qemu_free_irq(d->state.irq);
-    memory_region_destroy(&d->state.mmio);
-    memory_region_destroy(&d->io_bar);
+    //memory_region_destroy(&d->state.mmio);
+    //memory_region_destroy(&d->io_bar);
     timer_del(d->state.timer);
     timer_free(d->state.timer);
     eeprom93xx_free(&dev->qdev, d->state.eeprom);
@@ -102,7 +105,7 @@ static void pci_tulip_uninit(PCIDevice *dev)
 }
 
 static NetClientInfo net_tulip_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .can_receive = tulip_can_receive,
     .receive = tulip_receive,
@@ -110,7 +113,7 @@ static NetClientInfo net_tulip_info = {
     .link_status_changed = tulip_set_link_status,
 };
 
-static int pci_tulip_init(PCIDevice *pci_dev)
+static void pci_tulip_init(PCIDevice *pci_dev, Error ** e)
 {
     PCITulipState *d = PCI_TULIP(pci_dev);
     TulipState *s = &d->state;
@@ -139,7 +142,7 @@ static int pci_tulip_init(PCIDevice *pci_dev)
     s->dma_opaque = pci_dev;
 
     /* FIXME: Move everything below to this func: */
-    return tulip_init(DEVICE(pci_dev), s, &net_tulip_info);
+    tulip_init(DEVICE(pci_dev), s, &net_tulip_info);
 }
 
 static void pci_tulip_reset(DeviceState *dev)
@@ -159,7 +162,7 @@ static void tulip_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = pci_tulip_init;
+    k->realize = pci_tulip_init;
     k->exit = pci_tulip_uninit;
     k->vendor_id = PCI_VENDOR_ID_DEC;
     k->device_id = PCI_DEVICE_ID_DEC_21142;
