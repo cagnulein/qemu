@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/hw.h"
+#include "hw/pci/pci.h"
 #include "net/net.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
@@ -147,6 +148,97 @@ uint16_t tulip_eeprom_template[EEPROM_SIZE] = {
 };
 
 static void tulip_update_irq(TulipState *s);
+
+typedef struct TulipBaseClass {
+    PCIDeviceClass parent_class;
+    uint16_t phy_id2;
+} TulipBaseClass;
+
+#define TYPE_TULIP_BASE "tulip-base"
+
+#define Tulip(obj) \
+    OBJECT_CHECK(TulipState, (obj), TYPE_TULIP_BASE)
+
+#define TULIP_DEVICE_CLASS(klass) \
+     OBJECT_CLASS_CHECK(TulipBaseClass, (klass), TYPE_TULIP_BASE)
+#define TULIP_DEVICE_GET_CLASS(obj) \
+    OBJECT_GET_CLASS(TulipBaseClass, (obj), TYPE_TULIP_BASE)
+
+typedef struct TulipInfo {
+    const char *name;
+    uint16_t   device_id;
+    uint8_t    revision;
+    uint16_t   phy_id2;
+} TulipInfo;
+
+
+static void tulip_instance_init(Object *obj)
+{
+    TulipState *n = Tulip(obj);
+    device_add_bootindex_property(obj, &n->conf.bootindex,
+                                  "bootindex", "/ethernet-phy@0",
+                                  DEVICE(n), NULL);
+}
+
+static NetClientInfo net_tulip_info = {
+    .type = NET_CLIENT_DRIVER_NIC,
+    .size = sizeof(NICState),
+    .can_receive = tulip_can_receive,
+    .receive = tulip_receive,
+    .receive_iov = 0, //tulip_receive_iov,
+    .link_status_changed = tulip_set_link_status,
+};
+
+
+static const TypeInfo tulip_base_info = {
+    .name          = TYPE_TULIP_BASE,
+    .parent        = TYPE_PCI_DEVICE,
+    .instance_size = sizeof(TulipState),
+    .instance_init = tulip_instance_init,
+    .class_size    = sizeof(TulipBaseClass),
+    .abstract      = true,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
+};
+
+static const TulipInfo tulip_devices[] = {
+    {
+        .name      = "tulip",
+        .device_id = PCI_DEVICE_ID_DEC_21142,
+        .revision  = 0x03,
+        .phy_id2   = PCI_DEVICE_ID_DEC_21142,
+    },
+};
+
+static Property tulip_properties[] = {
+    DEFINE_NIC_PROPERTIES(TulipState, conf),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
+static void tulip_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+    TulipBaseClass *e = TULIP_DEVICE_CLASS(klass);
+    const TulipInfo *info = data;
+
+    k->realize = pci_tulip_realize;
+    k->exit = 0; //pci_tulip_uninit;
+    k->romfile = 0;
+    k->vendor_id = PCI_VENDOR_ID_DEC;
+    k->device_id = info->device_id;
+    k->revision = info->revision;
+    e->phy_id2 = info->phy_id2;
+    k->class_id = PCI_CLASS_NETWORK_ETHERNET;
+    set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
+    dc->desc = "Dec 10/100 Ethernet";
+    dc->reset = 0; // tulip_reset;
+    dc->vmsd = 0;//&vmstate_tulip;
+    dc->props = tulip_properties;
+}
+
 
 static inline uint32_t mac_readreg(TulipState *s, int index)
 {
@@ -452,19 +544,22 @@ void tulip_cleanup(TulipState *s)
     s->nic = NULL;
 }
 
-int tulip_init(DeviceState *dev, TulipState *s, NetClientInfo *info)
+void pci_tulip_realize(PCIDevice *pci_dev, Error **errp)
 {
     int i;
     uint8_t *macaddr;
     uint16_t *eeprom_contents;
 
-    lxt971_init(&s->mii, 0);
+    DeviceState *dev = DEVICE(pci_dev);
+    TulipState *d = Tulip(pci_dev);
 
-    qemu_macaddr_default_if_unset(&s->conf.macaddr);
-    macaddr = s->conf.macaddr.a;
+    lxt971_init(&d->mii, 0);
 
-    s->eeprom = eeprom93xx_new(dev, EEPROM_SIZE);
-    eeprom_contents = eeprom93xx_data(s->eeprom);
+    qemu_macaddr_default_if_unset(&d->conf.macaddr);
+    macaddr = d->conf.macaddr.a;
+
+    d->eeprom = eeprom93xx_new(dev, EEPROM_SIZE);
+    eeprom_contents = eeprom93xx_data(d->eeprom);
     memmove(eeprom_contents, tulip_eeprom_template,
             EEPROM_SIZE * sizeof(uint16_t));
 
@@ -481,19 +576,19 @@ int tulip_init(DeviceState *dev, TulipState *s, NetClientInfo *info)
      *   http://ftp.debian.org/debian/pool/main/n/nictools-pci/
      */
 
-    s->nic = qemu_new_nic(info, &s->conf,
+    d->nic = qemu_new_nic(&net_tulip_info, &d->conf,
                           object_get_typename(OBJECT(dev)),
-                          dev->id, s);
+                          dev->id, d);
 
-    qemu_format_nic_info_str(qemu_get_queue(s->nic), macaddr);
+    qemu_format_nic_info_str(qemu_get_queue(d->nic), macaddr);
 
-    add_boot_device_path(s->conf.bootindex, dev, "/ethernet-phy@0");
+    add_boot_device_path(d->conf.bootindex, dev, "/ethernet-phy@0");
 
-    s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, tulip_timer, s);
-    timer_mod(s->timer,
+    d->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, tulip_timer, d);
+    timer_mod(d->timer,
               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + NANOSECONDS_PER_SECOND);
 
-    return 0;
+    return;
 }
 
 static const uint32_t mac_reg_init[] = {
@@ -515,10 +610,8 @@ static const uint32_t mac_reg_init[] = {
     [CSR15] = 0x00000000,
 };
 
-void tulip_reset(void *opaque)
+void tulip_reset(TulipState * d)
 {
-    TulipState *d = opaque;
-
     memset(d->mac_reg, 0, sizeof d->mac_reg);
     memmove(d->mac_reg, mac_reg_init, sizeof mac_reg_init);
 
@@ -558,3 +651,23 @@ void tulip_timer(void *opaque)
         qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + NANOSECONDS_PER_SECOND / 10);
 }
 
+static void tulip_register_types(void)
+{
+    int i;
+
+    type_register_static(&tulip_base_info);
+    for (i = 0; i < ARRAY_SIZE(tulip_devices); i++) {
+        const TulipInfo *info = &tulip_devices[i];
+        TypeInfo type_info = {};
+
+        type_info.name = info->name;
+        type_info.parent = TYPE_TULIP_BASE;
+        type_info.class_data = (void *)info;
+        type_info.class_init = tulip_class_init;
+        type_info.instance_init = tulip_instance_init;
+
+        type_register(&type_info);
+    }
+}
+
+type_init(tulip_register_types)

@@ -26,6 +26,7 @@
 #define TULIP_CSR_REGION_SIZE       0x80
 
 typedef struct TulipState_st {
+    PCIDevice dev;
     NICState *nic;
     NICConf conf;
     QEMUTimer *timer;
@@ -49,9 +50,9 @@ typedef struct TulipState_st {
     int tx_polling;
 } TulipState;
 
-int tulip_init(DeviceState *dev, TulipState *s, NetClientInfo *info);
+void pci_tulip_realize(PCIDevice *pci_dev, Error **errp);
 void tulip_cleanup(TulipState *s);
-void tulip_reset(void *opaque);
+void tulip_reset(TulipState * d);
 
 void tulip_timer(void *opaque);
 uint64_t tulip_csr_read(void *opaque, hwaddr addr, unsigned size);

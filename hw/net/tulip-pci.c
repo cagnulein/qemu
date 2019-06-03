@@ -46,7 +46,7 @@ typedef struct {
     TulipState state;
     MemoryRegion io_bar;
 } PCITulipState;
-
+#if 0
 static const VMStateDescription vmstate_tulip = {
     .name = "tulip",
     .version_id = 2,
@@ -84,12 +84,12 @@ static void pci_physical_memory_read(void *dma_opaque, hwaddr addr,
    pci_dma_read(dma_opaque, addr, buf, len);
 }
 
-static void pci_tulip_cleanup(NetClientState *nc)
+/*static void pci_tulip_cleanup(NetClientState *nc)
 {
     TulipState *s = qemu_get_nic_opaque(nc);
 
     tulip_cleanup(s);
-}
+}*/
 
 static void pci_tulip_uninit(PCIDevice *dev)
 {
@@ -142,7 +142,7 @@ static void pci_tulip_init(PCIDevice *pci_dev, Error ** e)
     s->dma_opaque = pci_dev;
 
     /* FIXME: Move everything below to this func: */
-    tulip_init(DEVICE(pci_dev), s, &net_tulip_info);
+    pci_tulip_realize(pci_dev, e);
 }
 
 static void pci_tulip_reset(DeviceState *dev)
@@ -181,11 +181,4 @@ static const TypeInfo tulip_info = {
     .instance_size = sizeof(PCITulipState),
     .class_init    = tulip_class_init,
 };
-
-static void tulip_register_types(void)
-{
-    type_register_static(&tulip_info);
-}
-
-type_init(tulip_register_types)
-
+#endif
