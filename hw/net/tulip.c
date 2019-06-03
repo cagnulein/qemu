@@ -154,11 +154,6 @@ typedef struct TulipBaseClass {
     uint16_t phy_id2;
 } TulipBaseClass;
 
-#define TYPE_TULIP_BASE "tulip-base"
-
-#define Tulip(obj) \
-    OBJECT_CHECK(TulipState, (obj), TYPE_TULIP_BASE)
-
 #define TULIP_DEVICE_CLASS(klass) \
      OBJECT_CLASS_CHECK(TulipBaseClass, (klass), TYPE_TULIP_BASE)
 #define TULIP_DEVICE_GET_CLASS(obj) \
@@ -544,7 +539,7 @@ void tulip_cleanup(TulipState *s)
     s->nic = NULL;
 }
 
-void pci_tulip_realize(PCIDevice *pci_dev, Error **errp)
+void tulip_init(PCIDevice *pci_dev, Error **errp)
 {
     int i;
     uint8_t *macaddr;

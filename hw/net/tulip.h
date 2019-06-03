@@ -26,11 +26,12 @@
 #define TULIP_CSR_REGION_SIZE       0x80
 
 typedef struct TulipState_st {
-    PCIDevice dev;
+    PCIDevice parent;
     NICState *nic;
     NICConf conf;
     QEMUTimer *timer;
     MemoryRegion mmio;
+    MemoryRegion io_bar;
 
     qemu_irq irq;
 
@@ -51,6 +52,7 @@ typedef struct TulipState_st {
 } TulipState;
 
 void pci_tulip_realize(PCIDevice *pci_dev, Error **errp);
+void tulip_init(PCIDevice *pci_dev, Error **errp);
 void tulip_cleanup(TulipState *s);
 void tulip_reset(TulipState * d);
 
@@ -60,5 +62,9 @@ void tulip_csr_write(void *opaque, hwaddr addr, uint64_t val, unsigned size);
 int tulip_can_receive(NetClientState *nc);
 ssize_t tulip_receive(NetClientState *nc, const uint8_t *buf, size_t size);
 void tulip_set_link_status(NetClientState *nc);
+
+#define TYPE_TULIP_BASE "tulip-base"
+#define Tulip(obj) \
+    OBJECT_CHECK(TulipState, (obj), TYPE_TULIP_BASE)
 
 #endif

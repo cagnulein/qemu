@@ -38,23 +38,14 @@
 #define PCI_TULIP(obj) \
     OBJECT_CHECK(PCITulipState, (obj), TYPE_PCI_TULIP)
 
-typedef struct {
-    /*< private >*/
-    PCIDevice parent_obj;
-    /*< public >*/
-
-    TulipState state;
-    MemoryRegion io_bar;
-} PCITulipState;
-#if 0
 static const VMStateDescription vmstate_tulip = {
     .name = "tulip",
     .version_id = 2,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .fields      = (VMStateField[]) {
-        VMSTATE_PCI_DEVICE(parent_obj, PCITulipState),
-        VMSTATE_MACADDR(state.conf.macaddr, PCITulipState),
+        VMSTATE_PCI_DEVICE(parent, TulipState),
+        VMSTATE_MACADDR(conf.macaddr, TulipState),
         /* FIXME: add VMSTATE_STRUCT for saving state */
         VMSTATE_END_OF_LIST()
     }
@@ -84,27 +75,27 @@ static void pci_physical_memory_read(void *dma_opaque, hwaddr addr,
    pci_dma_read(dma_opaque, addr, buf, len);
 }
 
-/*static void pci_tulip_cleanup(NetClientState *nc)
+static void pci_tulip_cleanup(NetClientState *nc)
 {
     TulipState *s = qemu_get_nic_opaque(nc);
 
     tulip_cleanup(s);
-}*/
+}
 
 static void pci_tulip_uninit(PCIDevice *dev)
 {
-    PCITulipState *d = PCI_TULIP(dev);
+    TulipState *d = Tulip(dev);
 
-    qemu_free_irq(d->state.irq);
+    qemu_free_irq(d->irq);
     //memory_region_destroy(&d->state.mmio);
     //memory_region_destroy(&d->io_bar);
-    timer_del(d->state.timer);
-    timer_free(d->state.timer);
-    eeprom93xx_free(&dev->qdev, d->state.eeprom);
-    qemu_del_nic(d->state.nic);
+    timer_del(d->timer);
+    timer_free(d->timer);
+    eeprom93xx_free(&dev->qdev, d->eeprom);
+    qemu_del_nic(d->nic);
 }
 
-static NetClientInfo net_tulip_info = {
+NetClientInfo net_tulip_info = {
     .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .can_receive = tulip_can_receive,
@@ -113,10 +104,10 @@ static NetClientInfo net_tulip_info = {
     .link_status_changed = tulip_set_link_status,
 };
 
-static void pci_tulip_init(PCIDevice *pci_dev, Error ** e)
+void pci_tulip_realize(PCIDevice *pci_dev, Error ** e)
 {
-    PCITulipState *d = PCI_TULIP(pci_dev);
-    TulipState *s = &d->state;
+    DeviceState *d = DEVICE(pci_dev);
+    TulipState *s = Tulip(pci_dev);
     uint8_t *pci_conf;
 
     pci_conf = pci_dev->config;
@@ -127,13 +118,13 @@ static void pci_tulip_init(PCIDevice *pci_dev, Error ** e)
     pci_conf[PCI_INTERRUPT_PIN] = 1; /* interrupt pin A */
 
     /* PCI interface */
-    memory_region_init_io(&d->state.mmio, OBJECT(d), &tulip_mmio_ops, s,
+    memory_region_init_io(&s->mmio, OBJECT(d), &tulip_mmio_ops, s,
                           "tulip-mmio", TULIP_CSR_REGION_SIZE);
-    memory_region_init_io(&d->io_bar, OBJECT(d), &tulip_mmio_ops, s,
+    memory_region_init_io(&s->io_bar, OBJECT(d), &tulip_mmio_ops, s,
                           "tulip-io", TULIP_CSR_REGION_SIZE);
 
-    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io_bar);
-    pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->state.mmio);
+    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->io_bar);
+    pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->mmio);
 
     s->irq = pci_allocate_irq(pci_dev);
 
@@ -142,18 +133,18 @@ static void pci_tulip_init(PCIDevice *pci_dev, Error ** e)
     s->dma_opaque = pci_dev;
 
     /* FIXME: Move everything below to this func: */
-    pci_tulip_realize(pci_dev, e);
+    tulip_init(pci_dev, e);
 }
 
 static void pci_tulip_reset(DeviceState *dev)
 {
-    PCITulipState *d = PCI_TULIP(dev);
+    TulipState *d = Tulip(dev);
 
-    tulip_reset(&d->state);
+    tulip_reset(d);
 }
 
 static Property tulip_properties[] = {
-    DEFINE_NIC_PROPERTIES(PCITulipState, state.conf),
+    DEFINE_NIC_PROPERTIES(TulipState, conf),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -162,7 +153,7 @@ static void tulip_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = pci_tulip_init;
+    k->realize = pci_tulip_realize;
     k->exit = pci_tulip_uninit;
     k->vendor_id = PCI_VENDOR_ID_DEC;
     k->device_id = PCI_DEVICE_ID_DEC_21142;
@@ -175,10 +166,9 @@ static void tulip_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
 }
 
-static const TypeInfo tulip_info = {
+const TypeInfo tulip_info = {
     .name          = TYPE_PCI_TULIP,
     .parent        = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(PCITulipState),
+    .instance_size = sizeof(TulipState),
     .class_init    = tulip_class_init,
 };
-#endif
